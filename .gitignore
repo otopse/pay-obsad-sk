@@ -1,0 +1,18 @@
+# Záležitosti
+/vendor/
+.env
+
+# Logy a dočasné súbory
+/storage/logs/*.log
+!/storage/logs/.gitkeep
+
+# IDE a OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Composer (lock file sa verzuje pre reprodukovateľné builidy)
+composer.phar
