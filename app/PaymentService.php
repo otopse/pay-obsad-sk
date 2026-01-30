@@ -4,39 +4,111 @@ declare(strict_types=1);
 
 namespace App;
 
+use App\Provider\PaymentProviderInterface;
+use App\Provider\ECardProvider;
+use App\Provider\FakeProvider;
+use App\Provider\ProviderRedirectResult;
+use PDO;
+
 class PaymentService
 {
+    private PaymentProviderInterface $provider;
+
     public function __construct(
         private Db $db,
-        private XPayClient $xPayClient,
-        private Config $config
+        private Config $config,
+        private Log $log,
     ) {
+        $this->provider = $this->config->get('PAYMENT_FAKE_MODE', true)
+            ? new FakeProvider($config)
+            : new ECardProvider($config);
     }
 
     /**
-     * Inicializuje novú platbu.
+     * Vytvorí platbu v DB a vráti redirect URL na providera.
+     * @return array{payment: Payment, redirectUrl: string}
      */
-    public function initPayment(float $amount, string $orderId, array $metadata = []): array
+    public function initPayment(int $amountCents, string $description, string $returnUrl): array
     {
-        // TODO: Uloženie platby do DB a vytvorenie v XPay
-        return [];
+        $publicId = $this->generatePublicId();
+        $pdo = $this->db->getConnection();
+        $stmt = $pdo->prepare(
+            'INSERT INTO payments (public_id, amount_cents, currency, description, status, provider, return_url) 
+             VALUES (?, ?, ?, ?, ?, ?, ?)'
+        );
+        $stmt->execute([
+            $publicId,
+            $amountCents,
+            $this->config->get('PAYMENT_CURRENCY', 'EUR'),
+            $description ?: null,
+            'created',
+            'ecard',
+            $returnUrl ?: null,
+        ]);
+        $id = (int) $pdo->lastInsertId();
+        $pdo->prepare('UPDATE payments SET status = ? WHERE id = ?')->execute(['redirect_sent', $id]);
+        $payment = $this->findById($id);
+        if ($payment === null) {
+            throw new \RuntimeException('Payment insert failed');
+        }
+        $result = $this->provider->createRedirect($payment);
+        $this->log->info('initPayment', ['public_id' => $publicId, 'amount_cents' => $amountCents, 'result' => 'redirect']);
+        return ['payment' => $payment, 'redirectUrl' => $result->redirectUrl];
     }
 
-    /**
-     * Spracuje návrat z platobnej brány (return URL).
-     */
-    public function handleReturn(array $data): bool
+    public function markPaid(string $publicId, ?string $providerRef = null, ?string $providerPayload = null): void
     {
-        // TODO: Overenie a aktualizácia stavu platby
-        return true;
+        $this->updateStatus($publicId, 'paid', $providerRef, $providerPayload);
+        $this->log->info('markPaid', ['public_id' => $publicId, 'result' => 'ok']);
     }
 
-    /**
-     * Spracuje notifikáciu (webhook) o zmene stavu platby.
-     */
-    public function handleNotify(array $data): bool
+    public function markCancelled(string $publicId): void
     {
-        // TODO: Overenie podpisu, aktualizácia platby v DB
-        return true;
+        $this->updateStatus($publicId, 'cancelled', null, null);
+        $this->log->info('markCancelled', ['public_id' => $publicId, 'result' => 'ok']);
+    }
+
+    public function markFailed(string $publicId, ?string $providerRef = null, ?string $providerPayload = null): void
+    {
+        $this->updateStatus($publicId, 'failed', $providerRef, $providerPayload);
+        $this->log->info('markFailed', ['public_id' => $publicId, 'result' => 'ok']);
+    }
+
+    public function getProvider(): PaymentProviderInterface
+    {
+        return $this->provider;
+    }
+
+    public function findByPublicId(string $publicId): ?Payment
+    {
+        $stmt = $this->db->getConnection()->prepare('SELECT * FROM payments WHERE public_id = ?');
+        $stmt->execute([$publicId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row ? Payment::fromRow($row) : null;
+    }
+
+    private function findById(int $id): ?Payment
+    {
+        $stmt = $this->db->getConnection()->prepare('SELECT * FROM payments WHERE id = ?');
+        $stmt->execute([$id]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row ? Payment::fromRow($row) : null;
+    }
+
+    private function updateStatus(string $publicId, string $status, ?string $providerRef, ?string $providerPayload): void
+    {
+        $pdo = $this->db->getConnection();
+        if ($providerPayload !== null) {
+            $stmt = $pdo->prepare('UPDATE payments SET status = ?, provider_ref = ?, provider_payload = ? WHERE public_id = ?');
+            $stmt->execute([$status, $providerRef, $providerPayload, $publicId]);
+        } else {
+            $stmt = $pdo->prepare('UPDATE payments SET status = ?, provider_ref = COALESCE(?, provider_ref) WHERE public_id = ?');
+            $stmt->execute([$status, $providerRef, $publicId]);
+        }
+    }
+
+    private function generatePublicId(): string
+    {
+        return bin2hex(random_bytes(20));
     }
 }

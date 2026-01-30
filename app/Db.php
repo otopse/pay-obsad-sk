@@ -14,12 +14,12 @@ class Db
     {
         $dsn = sprintf(
             'mysql:host=%s;dbname=%s;charset=utf8mb4',
-            $config->get('DB_HOST', 'localhost'),
-            $config->get('DB_NAME', 'pay_obsad')
+            $config->require('DB_HOST'),
+            $config->require('DB_NAME')
         );
         $this->pdo = new PDO(
             $dsn,
-            $config->get('DB_USER', ''),
+            $config->require('DB_USER'),
             $config->get('DB_PASS', ''),
             [
                 PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
