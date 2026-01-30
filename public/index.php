@@ -6,4 +6,3 @@ require_once __DIR__ . '/../vendor/autoload.php';
 
 // Základná vstupná stránka
 echo 'Pay Obsad SK';
-
