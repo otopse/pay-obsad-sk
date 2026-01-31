@@ -6,8 +6,17 @@ require_once __DIR__ . '/bootstrap.php';
 
 header('Content-Type: text/html; charset=utf-8');
 
+$mode = $paymentService->getPaymentMode();
 $query = $_GET;
-$result = $paymentService->getProvider()->verifyReturn($query);
+
+if ($mode === 'sandbox' || $mode === 'live') {
+    $log->info('pay-return sandbox/live', ['mode' => $mode, 'query_keys' => array_keys($query), 'result' => 'skeleton']);
+    http_response_code(200);
+    echo 'Návrat z platobnej brány (sandbox/live) – spracovanie zatiaľ len skeleton.';
+    exit;
+}
+
+$result = $paymentService->getGateway()->verifyReturn($query);
 
 if (!$result->success || $result->publicId === null) {
     $log->error('pay-return verify failed', ['query' => $query, 'result' => 'invalid']);
@@ -33,7 +42,7 @@ if ($status === 'paid') {
     $paymentService->markCancelled($result->publicId);
 }
 
-$log->info('pay-return updated', ['public_id' => $result->publicId, 'status' => $status, 'result' => 'ok']);
+$log->info('pay-return updated', ['public_id' => $result->publicId, 'status' => $status, 'result' => $status === 'paid' ? 'paid' : ($status === 'failed' ? 'error' : 'cancel')]);
 ?>
 <!DOCTYPE html>
 <html lang="sk">

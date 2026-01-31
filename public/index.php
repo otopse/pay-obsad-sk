@@ -23,7 +23,8 @@ header('Content-Type: text/html; charset=utf-8');
 </head>
 <body>
     <h1>Pay Obsad SK</h1>
-    <p>Testovacia platba (sandbox / fake mode)</p>
+    <p><strong>Aktívny režim:</strong> <span class="mode"><?php echo htmlspecialchars($config->getPaymentMode()); ?></span></p>
+    <p>Testovacia platba</p>
     <form method="post" action="pay-init.php">
         <label>
             Suma (centy)

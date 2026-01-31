@@ -16,7 +16,12 @@ final class ECardProvider implements PaymentProviderInterface
 
     public function createRedirect(Payment $payment): ProviderRedirectResult
     {
-        $gatewayUrl = $this->config->require('ECARD_GATEWAY_URL');
+        $gatewayUrl = $this->config->get('ECARD_GATEWAY_URL', '');
+        if ($gatewayUrl === '' || $gatewayUrl === null) {
+            $baseUrl = rtrim((string) $this->config->get('APP_URL', ''), '/');
+            $placeholderUrl = $baseUrl . '/pay-ecard-placeholder.php?public_id=' . urlencode($payment->publicId);
+            return new ProviderRedirectResult($placeholderUrl, ['placeholder' => true]);
+        }
         $merchantId = $this->config->require('ECARD_MERCHANT_ID');
         $baseUrl = rtrim($this->config->get('APP_URL', ''), '/');
         $returnUrl = $baseUrl . '/pay-return.php';

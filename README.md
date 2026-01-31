@@ -13,18 +13,18 @@ cp .env.example .env
 
 Kľúče sú popísané v `.env.example`. Povinné pre beh: `DB_HOST`, `DB_NAME`, `DB_USER` (a `DB_PASS` podľa servera).
 
-## Fake mode
+## Režim platieb (PAYMENT_MODE)
 
-Pre testovanie bez reálnej platobnej brány:
+Hodnota `PAYMENT_MODE` v `.env` riadi platobnú logiku. Povolené hodnoty: **fake**, **sandbox**, **live**. Default je **fake**. Ak je hodnota iná, použije sa fallback na fake a do logu sa zapíše warning.
 
 ```env
-PAYMENT_FAKE_MODE=1
+PAYMENT_MODE=fake
 ```
 
-- `1` = **FakeProvider** – redirect na `/pay-return.php` s parametrami (status, public_id), bez eCard.
-- `0` = **ECardProvider** – reálna brána (sandbox/produkcia), potrebné ECARD_* v `.env`.
+- **fake** = FakePaymentGateway – okamžitý redirect na `/pay-return.php` s parametrami (status, public_id), bez eCard.
+- **sandbox** / **live** = ECardPaymentGateway – presmerovanie na eCard bránu (alebo na placeholder `/pay-ecard-placeholder.php`, ak eCard nie je nakonfigurovaná).
 
-Po doplnení reálnych sandbox údajov stačí zmeniť `.env` (napr. `PAYMENT_FAKE_MODE=0` a ECARD_*) bez úprav kódu.
+Na stránke `/` (index.php) sa zobrazuje **aktívny režim** (fake / sandbox / live). Do HTML sa nikdy nevypisuje celé `.env` – iba bezpečné hodnoty ako PAYMENT_MODE.
 
 ## Databáza – migrácia
 
@@ -37,11 +37,11 @@ Tabuľka `payments` sa vytvorí s potrebnými stĺpcami (public_id, amount_cents
 
 ## Ako otestovať lokálne / na hostingu
 
-1. Nastavte `.env` (DB_*, `PAYMENT_FAKE_MODE=1`, prípadne `LOG_FILE`).
+1. Nastavte `.env` (DB_*, `PAYMENT_MODE=fake`, prípadne `LOG_FILE`).
 2. Spustite migráciu `001_init.sql` v phpMyAdmin.
 3. Otvorte `/` (resp. `index.php`).
 4. Zadajte sumu (v centoch) a popis, odošlite formulár.
-5. **Fake mode:** presmeruje na `/pay-return.php` so stavom (paid/failed), v DB sa vytvorí záznam a po return sa aktualizuje status.
+5. **Režim fake:** presmeruje na `/pay-return.php` so stavom (paid/failed), v DB sa vytvorí záznam a po return sa aktualizuje status.
 6. V databáze overte zmenu stavu platby (created → paid alebo failed).
 
 ## Reálny sandbox VÚB eCard
@@ -53,7 +53,7 @@ Pre reálny sandbox doplňte do `.env`:
 - `ECARD_SHARED_SECRET` – pre HMAC podpis, alebo
 - `ECARD_PRIVATE_KEY_PATH` a `ECARD_PUBLIC_CERT_PATH` – pre RSA podpis
 
-Nastavte `PAYMENT_FAKE_MODE=0`. Podpis a parametre v `app/Provider/ECardProvider.php` treba doplniť podľa oficiálnej dokumentácie VÚB eCard.
+Nastavte `PAYMENT_MODE=sandbox` alebo `PAYMENT_MODE=live`. Podpis a parametre v `app/Provider/ECardProvider.php` treba doplniť podľa oficiálnej dokumentácie VÚB eCard.
 
 ## Deploy
 
@@ -72,7 +72,8 @@ Potrebné secrets: `SFTP_HOST`, `SFTP_USER`, `SFTP_PASS`, `SFTP_PORT`, `SFTP_TAR
 
 | Endpoint       | Metóda | Popis |
 |----------------|--------|--------|
-| `/`            | GET    | Formulár na test platby (suma, popis). |
+| `/`            | GET    | Formulár na test platby (suma, popis). Zobrazuje aktívny režim (fake/sandbox/live). |
+| `health.php`   | GET    | Self-check: PAYMENT_MODE, existencia `vendor/autoload.php`, DB pripojenie. Bez citlivých údajov. |
 | `pay-init.php` | POST   | Validácia, vytvorenie platby v DB, redirect na providera. |
 | `pay-return.php` | GET  | Návrat z brány; overenie, aktualizácia statusu, zobrazenie výsledku + public_id. |
 | `pay-cancel.php` | GET  | Zrušenie platby (query: `public_id`). |
@@ -81,7 +82,7 @@ Potrebné secrets: `SFTP_HOST`, `SFTP_USER`, `SFTP_PASS`, `SFTP_PORT`, `SFTP_TAR
 ## Akceptačné kritériá (po deployi)
 
 - Na https://pay.obsad.sk/ sa zobrazí stránka s formulárom.
-- V režime `PAYMENT_FAKE_MODE=1`:
+- V režime `PAYMENT_MODE=fake`:
   - `pay-init` vytvorí záznam v DB (status `created`).
   - Prebehne redirect na `pay-return`.
   - `pay-return` nastaví status `paid` alebo `failed` podľa parametra.

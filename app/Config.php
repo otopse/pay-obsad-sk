@@ -99,6 +99,18 @@ final class Config
         return getenv($key) !== false;
     }
 
+    /**
+     * Povolené hodnoty: fake, sandbox, live. Default fake.
+     * Nevracia citlivé údaje – iba jednu z týchto troch hodnôt.
+     */
+    public function getPaymentMode(): string
+    {
+        $raw = $this->get('PAYMENT_MODE', 'fake');
+        $mode = is_string($raw) ? strtolower(trim($raw)) : 'fake';
+        return in_array($mode, ['fake', 'sandbox', 'live'], true) ? $mode : 'fake';
+    }
+
+
     private function cast(string $value): mixed
     {
         $v = trim($value);

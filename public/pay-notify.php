@@ -21,6 +21,25 @@ if ($notifyToken !== null && $notifyToken !== '') {
     }
 }
 
+$mode = $paymentService->getPaymentMode();
+
+if ($mode === 'fake') {
+    $log->info('pay-notify fake', ['result' => 'no-op']);
+    http_response_code(200);
+    header('Content-Type: text/plain; charset=utf-8');
+    echo 'OK';
+    exit;
+}
+
+if ($mode === 'sandbox' || $mode === 'live') {
+    $rawBody = (string) file_get_contents('php://input');
+    $log->info('pay-notify sandbox/live', ['mode' => $mode, 'body_length' => strlen($rawBody), 'result' => 'skeleton']);
+    http_response_code(200);
+    header('Content-Type: text/plain; charset=utf-8');
+    echo 'OK';
+    exit;
+}
+
 $rawBody = (string) file_get_contents('php://input');
 $headers = [];
 foreach ($_SERVER as $k => $v) {
@@ -29,7 +48,7 @@ foreach ($_SERVER as $k => $v) {
     }
 }
 
-$result = $paymentService->getProvider()->handleNotify($rawBody, $headers);
+$result = $paymentService->getGateway()->handleNotify($rawBody, $headers);
 
 if (!$result->success || $result->publicId === null) {
     $log->error('pay-notify verify failed', ['result' => 'invalid']);
@@ -55,7 +74,7 @@ if ($status === 'paid') {
     $paymentService->markCancelled($result->publicId);
 }
 
-$log->info('pay-notify updated', ['public_id' => $result->publicId, 'status' => $status, 'result' => 'ok']);
+$log->info('pay-notify updated', ['public_id' => $result->publicId, 'status' => $status, 'result' => $status === 'paid' ? 'paid' : ($status === 'failed' ? 'error' : 'cancel')]);
 http_response_code(200);
 header('Content-Type: text/plain; charset=utf-8');
 echo 'OK';

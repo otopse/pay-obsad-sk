@@ -4,11 +4,19 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/bootstrap.php';
 
+$mode = $paymentService->getPaymentMode();
 $publicId = trim((string) ($_GET['public_id'] ?? ''));
 if ($publicId === '') {
     $log->error('pay-cancel missing public_id', ['result' => 'bad_request']);
     http_response_code(400);
     echo 'Chýba public_id.';
+    exit;
+}
+
+if ($mode === 'sandbox' || $mode === 'live') {
+    $log->info('pay-cancel sandbox/live', ['mode' => $mode, 'public_id' => $publicId, 'result' => 'skeleton']);
+    http_response_code(200);
+    echo 'Zrušenie platby (sandbox/live) – spracovanie zatiaľ len skeleton.';
     exit;
 }
 
@@ -21,7 +29,7 @@ if ($payment === null) {
 }
 
 $paymentService->markCancelled($publicId);
-$log->info('pay-cancel updated', ['public_id' => $publicId, 'result' => 'ok']);
+$log->info('pay-cancel updated', ['public_id' => $publicId, 'result' => 'cancel']);
 
 header('Content-Type: text/html; charset=utf-8');
 ?>

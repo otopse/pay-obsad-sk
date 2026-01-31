@@ -21,6 +21,11 @@ final class Log
         $this->write('info', $message, $context);
     }
 
+    public function warning(string $message, array $context = []): void
+    {
+        $this->write('warning', $message, $context);
+    }
+
     public function error(string $message, array $context = []): void
     {
         $this->write('error', $message, $context);

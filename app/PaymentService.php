@@ -12,16 +12,28 @@ use PDO;
 
 class PaymentService
 {
-    private PaymentProviderInterface $provider;
+    private PaymentProviderInterface $gateway;
+    private string $paymentMode;
 
     public function __construct(
         private Db $db,
         private Config $config,
         private Log $log,
     ) {
-        $this->provider = $this->config->get('PAYMENT_FAKE_MODE', true)
+        $raw = $this->config->get('PAYMENT_MODE', 'fake');
+        $raw = is_string($raw) ? strtolower(trim($raw)) : 'fake';
+        $this->paymentMode = in_array($raw, ['fake', 'sandbox', 'live'], true) ? $raw : 'fake';
+        if ($this->paymentMode !== $raw) {
+            $this->log->warning('PAYMENT_MODE invalid, fallback to fake', ['raw' => $raw, 'resolved' => 'fake']);
+        }
+        $this->gateway = $this->paymentMode === 'fake'
             ? new FakeProvider($config)
             : new ECardProvider($config);
+    }
+
+    public function getPaymentMode(): string
+    {
+        return $this->paymentMode;
     }
 
     /**
@@ -51,32 +63,39 @@ class PaymentService
         if ($payment === null) {
             throw new \RuntimeException('Payment insert failed');
         }
-        $result = $this->provider->createRedirect($payment);
-        $this->log->info('initPayment', ['public_id' => $publicId, 'amount_cents' => $amountCents, 'result' => 'redirect']);
+        $result = $this->gateway->createRedirect($payment);
+        $this->log->info('initPayment', [
+            'mode' => $this->paymentMode,
+            'amount_cents' => $amountCents,
+            'description' => $description,
+            'public_id' => $publicId,
+            'return_url' => $returnUrl ?: null,
+            'result' => 'redirect',
+        ]);
         return ['payment' => $payment, 'redirectUrl' => $result->redirectUrl];
     }
 
     public function markPaid(string $publicId, ?string $providerRef = null, ?string $providerPayload = null): void
     {
         $this->updateStatus($publicId, 'paid', $providerRef, $providerPayload);
-        $this->log->info('markPaid', ['public_id' => $publicId, 'result' => 'ok']);
+        $this->log->info('markPaid', ['public_id' => $publicId, 'result' => 'paid']);
     }
 
     public function markCancelled(string $publicId): void
     {
         $this->updateStatus($publicId, 'cancelled', null, null);
-        $this->log->info('markCancelled', ['public_id' => $publicId, 'result' => 'ok']);
+        $this->log->info('markCancelled', ['public_id' => $publicId, 'result' => 'cancel']);
     }
 
     public function markFailed(string $publicId, ?string $providerRef = null, ?string $providerPayload = null): void
     {
         $this->updateStatus($publicId, 'failed', $providerRef, $providerPayload);
-        $this->log->info('markFailed', ['public_id' => $publicId, 'result' => 'ok']);
+        $this->log->info('markFailed', ['public_id' => $publicId, 'result' => 'error']);
     }
 
-    public function getProvider(): PaymentProviderInterface
+    public function getGateway(): PaymentProviderInterface
     {
-        return $this->provider;
+        return $this->gateway;
     }
 
     public function findByPublicId(string $publicId): ?Payment

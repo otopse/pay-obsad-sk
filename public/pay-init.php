@@ -14,11 +14,19 @@ $description = trim((string) ($_POST['description'] ?? ''));
 $returnUrl = trim((string) ($_POST['return_url'] ?? ''));
 
 if ($amountCents < 1) {
-    $log->error('pay-init validation failed', ['reason' => 'invalid amount', 'amount_cents' => $amountCents]);
+    $log->error('pay-init validation failed', ['reason' => 'invalid amount', 'amount_cents' => $amountCents, 'result' => 'error']);
     http_response_code(400);
     echo 'Neplatná suma.';
     exit;
 }
+
+$mode = $paymentService->getPaymentMode();
+$log->info('pay-init start', [
+    'mode' => $mode,
+    'amount_cents' => $amountCents,
+    'description' => $description,
+    'return_url' => $returnUrl ?: null,
+]);
 
 try {
     $result = $paymentService->initPayment($amountCents, $description, $returnUrl);
