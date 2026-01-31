@@ -11,9 +11,21 @@ final class Log
         'sign', 'signature', 'shared_secret', 'private_key', 'api_key',
     ];
 
+    private ?string $requestId = null;
+
     public function __construct(
         private Config $config,
     ) {
+    }
+
+    public function setRequestId(string $requestId): void
+    {
+        $this->requestId = $requestId;
+    }
+
+    public function getRequestId(): ?string
+    {
+        return $this->requestId;
     }
 
     public function info(string $message, array $context = []): void
@@ -36,6 +48,9 @@ final class Log
         $file = $this->config->get('LOG_FILE');
         if ($file === null || $file === '') {
             return;
+        }
+        if ($this->requestId !== null) {
+            $context['request_id'] = $this->requestId;
         }
         $context = $this->sanitize($context);
         $line = date('Y-m-d H:i:s') . ' [' . strtoupper($level) . '] ' . $message;

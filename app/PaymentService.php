@@ -53,12 +53,12 @@ class PaymentService
             $amountCents,
             $this->config->get('PAYMENT_CURRENCY', 'EUR'),
             $description ?: null,
-            'created',
+            'new',
             'ecard',
             $returnUrl ?: null,
         ]);
         $id = (int) $pdo->lastInsertId();
-        $pdo->prepare('UPDATE payments SET status = ? WHERE id = ?')->execute(['redirect_sent', $id]);
+        $pdo->prepare('UPDATE payments SET status = ? WHERE id = ?')->execute(['redirected', $id]);
         $payment = $this->findById($id);
         if ($payment === null) {
             throw new \RuntimeException('Payment insert failed');
@@ -104,6 +104,28 @@ class PaymentService
         $stmt->execute([$publicId]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         return $row ? Payment::fromRow($row) : null;
+    }
+
+    public function findByProviderRef(string $providerRef): ?Payment
+    {
+        $stmt = $this->db->getConnection()->prepare('SELECT * FROM payments WHERE provider_ref = ?');
+        $stmt->execute([$providerRef]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row ? Payment::fromRow($row) : null;
+    }
+
+    public function recordNotify(string $publicId, string $eventType, string $payloadHash, ?string $rawPayload = null): void
+    {
+        $pdo = $this->db->getConnection();
+        $stmt = $pdo->prepare('INSERT INTO notify_log (public_id, event_type, payload_hash, raw_payload) VALUES (?, ?, ?, ?)');
+        $stmt->execute([$publicId, $eventType, $payloadHash, $rawPayload]);
+    }
+
+    public function notifyHashExists(string $payloadHash): bool
+    {
+        $stmt = $this->db->getConnection()->prepare('SELECT 1 FROM notify_log WHERE payload_hash = ? LIMIT 1');
+        $stmt->execute([$payloadHash]);
+        return $stmt->fetch(PDO::FETCH_ASSOC) !== false;
     }
 
     private function findById(int $id): ?Payment
